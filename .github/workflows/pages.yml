@@ -1,0 +1,50 @@
+# Dükkan Ustası — web yayını (GitHub Pages, ücretsiz)
+# Her "main" güncellemesinde oyunu https://<kullanıcı>.github.io/<depo>/ adresine yayınlar.
+# iPhone'da Safari ile aç → Paylaş → Ana Ekrana Ekle.
+# İlk kez: Settings > Pages > Source = "GitHub Actions" seçilmeli.
+name: Web Yayını (iPhone)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  yayinla:
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Kodu al
+        uses: actions/checkout@v4
+
+      - name: Oyun klasörünü bul
+        run: |
+          CFG=$(find . -name capacitor.config.json -not -path "*/node_modules/*" | head -n 1)
+          if [ -z "$CFG" ]; then echo "::error::Proje dosyaları bulunamadı."; exit 1; fi
+          WEB="$(dirname "$CFG")/www"
+          echo "WEB=$WEB" >> "$GITHUB_ENV"
+          echo "Yayınlanacak klasör: $WEB"
+          ls -la "$WEB"
+
+      - name: Pages ayarı
+        uses: actions/configure-pages@v5
+
+      - name: Dosyaları hazırla
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ${{ env.WEB }}
+
+      - name: Yayınla
+        id: deployment
+        uses: actions/deploy-pages@v4
