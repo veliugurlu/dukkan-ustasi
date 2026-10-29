@@ -22,7 +22,7 @@ www/ (HTML/CSS/JS)  ──►  Capacitor 8  ──►  android/ (Gradle projesi)
 capacitor.config.json            appId: com.veli.dukkanustasi  ·  appName: Dükkan Ustası  ·  webDir: www
 package.json / package-lock.json Capacitor sürümleri sabit; bulutta `npm ci` ile birebir aynısı kurulur
 .github/workflows/android.yml    bulut derleme hattı
-resources/icon.png               1024×1024 simge (Aşama B'de Android simgelerine dönüştürülecek)
+resources/android/res/           Android simge + açılış ekranı (tools/make-android-res.js üretir, derlemede kopyalanır)
 android/                         ŞİMDİLİK YOK → bulutta her derlemede `npx cap add android` ile üretilir
                                  (Aşama B'de bir kez üretilip depoya eklenecek)
 ```
@@ -42,13 +42,12 @@ android/                         ŞİMDİLİK YOK → bulutta her derlemede `npx
    - `dukkan-ustasi-debug.apk` → telefona kopyala, “bilinmeyen kaynaklara izin ver” ile kur ve dene.
    - `dukkan-ustasi-release-unsigned.aab` → AAB'nin doğru üretildiğinin kanıtı. **İmzasız olduğu için Play kabul etmez**; Aşama C'de imzalanacak.
 
-Hat şunları yapar: `npm ci` → birim testleri → `cap add/sync android` → sürüm kodu = çalıştırma numarası,
+Hat şunları yapar: `npm ci` → birim testleri → `cap add/sync android` → oyunun simgesi ve açılış ekranı kopyalanır → sürüm kodu = çalıştırma numarası,
 sürüm adı = `package.json` sürümü, ekran yönü dikey → `gradlew assembleDebug bundleRelease` → çıktıları yükler.
 
 ### Aşama B — Android projesini sabitleme ve görünüm
 
 - `android/` klasörünü bir kez üretip depoya ekle (Gradle ayarları, simge, açılış ekranı kalıcı olsun). `.gitignore`'daki `android/` satırı kaldırılır.
-- `resources/icon.png` ile Android simgeleri ve açılış ekranı üretilir (`@capacitor/assets`, yalnızca bulutta çalıştırılır).
 - Gerekirse kayıt için `@capacitor/preferences` eklenir (localStorage Android'de de kalıcıdır; bu yalnızca ek güvence).
 
 ### Aşama C — İmzalama (ilk Play yüklemesinden önce)

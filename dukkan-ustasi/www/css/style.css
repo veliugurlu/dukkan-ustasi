@@ -18,8 +18,8 @@
   --radius: 16px;
   --shadow: 0 2px 0 rgba(60, 35, 15, .08), 0 8px 24px rgba(60, 35, 15, .08);
   --tabs-h: 64px;
-  --safe-b: env(safe-area-inset-bottom, 0px);
-  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+  --safe-t: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", "Helvetica Neue", Arial, sans-serif;
   color: var(--ink);
   -webkit-tap-highlight-color: transparent;
@@ -27,12 +27,14 @@
 
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
 body {
   background: var(--bg);
   background-image: radial-gradient(rgba(107, 66, 38, .05) 1px, transparent 1px);
   background-size: 18px 18px;
   overscroll-behavior: none;
   -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
 }
 button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; }
 [data-icon] svg, .ico svg { width: 1.25em; height: 1.25em; display: block; }

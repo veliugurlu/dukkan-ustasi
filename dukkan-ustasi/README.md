@@ -58,12 +58,20 @@ dukkan-ustasi/
 ├── tools/serve.js            ← bağımlılıksız yerel sunucu
 ├── tools/smoke.js            ← tarayıcı duman testi (Playwright, isteğe bağlı)
 ├── tools/balance.js          ← denge simülasyonu (bağımlılıksız)
-├── resources/icon.png        ← 1024×1024 uygulama simgesi (Android simgeleri için)
+├── resources/                ← 1024×1024 simge + Android simge/açılış ekranı görselleri
+├── tools/make-android-res.js ← Android görsellerini icon.svg'den üretir
 ├── capacitor.config.json     ← Android paket ayarları (com.veli.dukkanustasi)
 ├── package.json / package-lock.json
-├── .github/workflows/android.yml  ← bulutta APK + AAB derlemesi
 └── docs/ANDROID_PLAN.md      ← AAB ve bulut derleme planı
 ```
+
+GitHub deposunda bu klasör `dukkan-ustasi/` alt klasöründedir. Derleme dosyaları deponun kökündedir:
+`.github/workflows/android.yml` (APK + AAB) ve `.github/workflows/pages.yml` (iPhone için web yayını).
+
+## iPhone'da oynamak
+
+Oyun her güncellemede GitHub Pages'e yayınlanır: `https://veliugurlu.github.io/dukkan-ustasi/`.
+Safari ile aç → Paylaş → **Ana Ekrana Ekle**. Tam ekran açılır, kayıt telefonda kalır.
 
 ## Test
 
