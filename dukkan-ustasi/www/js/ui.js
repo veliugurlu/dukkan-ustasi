@@ -254,6 +254,54 @@
   }
   function stat(label, value) { return '<div class="stat"><small>' + label + '</small><strong>' + value + '</strong></div>'; }
 
+  /** Bu eşya türü için açık sipariş (en çok ödeyen). */
+  function orderFor(defId) {
+    var best = null;
+    (S.orders || []).forEach(function (o) { if (o.defId === defId && (!best || o.mult > best.mult)) best = o; });
+    return best;
+  }
+
+  /* ---------------- Günlük olay bandı ---------------- */
+  function renderEvent() {
+    var ev = E.eventDef(S);
+    var html = ev ? '<div class="ev-ico">' + Art.icon(ev.icon) + '</div><div><small>BUGÜNÜN OLAYI</small><b>' + esc(ev.title) + '</b><span>' + esc(E.eventText(S)) + '</span></div>' : '';
+    ['eventBanner', 'eventBannerMarket'].forEach(function (id) {
+      var el = $(id);
+      if (!el) return;
+      el.innerHTML = html;
+      el.hidden = !ev;
+      el.className = 'event-banner' + (ev && (ev.sell > 1 || ev.itemSell || ev.ask < 1 || ev.repair < 1) ? ' good' : ev ? ' bad' : '');
+    });
+  }
+
+  /* ---------------- Müşteri siparişleri ---------------- */
+  function renderOrders() {
+    var list = S.orders || [];
+    $('orderCount').textContent = list.length ? list.length + ' açık' : '';
+    if (!list.length) {
+      $('orderList').innerHTML = '<li class="order-empty">Şu an sipariş yok. Yeni müşteriler günler içinde gelir.</li>';
+      return;
+    }
+    $('orderList').innerHTML = list.map(function (o) {
+      var def = E.itemDef(o.defId);
+      var left = o.expires - S.day;
+      var match = null;
+      S.inventory.forEach(function (it) { if (!match && E.orderMatches(o, it)) match = it; });
+      var have = S.inventory.some(function (it) { return it.defId === o.defId; });
+      var est = E.orderPrice(S, o, { defId: o.defId, demand: 'normal', condition: Math.max(o.minCond, E.repairTarget(S)) });
+      var btn = match
+        ? '<button class="btn btn-small btn-gold" data-act="fulfill" data-order="' + o.uid + '" data-uid="' + match.uid + '">Teslim et · ' + fmt(E.orderPrice(S, o, match)) + '</button>'
+        : have ? '<button class="btn btn-small btn-secondary" data-act="goto" data-view="storage">Depoda: önce tamir et</button>'
+          : '<button class="btn btn-small btn-secondary" data-act="goto" data-view="market">Pazarda ara</button>';
+      return '<li class="order' + (left <= 0 ? ' urgent' : '') + '">' +
+        '<div class="order-art">' + Art.item(o.defId) + '</div>' +
+        '<div class="order-body"><b>' + esc(o.customer) + '</b>' +
+        '<span>' + esc(def.name) + ' · durum ≥ %' + o.minCond + '</span>' +
+        '<span>Öder: ~' + fmt(est) + ' <em class="pos">(normalin ×' + o.mult.toFixed(2).replace('.', ',') + ')</em></span>' +
+        '<small>' + (left <= 0 ? 'Bugün son gün!' : left + ' gün kaldı') + '</small></div>' + btn + '</li>';
+    }).join('');
+  }
+
   /* ---------------- Pazar ---------------- */
   function renderMarket() {
     var full = S.inventory.length >= E.capacity(S);
@@ -275,7 +323,9 @@
         '<div class="card-art">' + artHtml(o.defId, o.condition) + '</div>' +
         '<div class="card-body">' +
         '<div class="card-title"><h4>' + esc(def.name) + '</h4>' + demandChip(o.demand) + '</div>' +
-        '<div class="chips">' + defectChip(o.defect, o.inspected) + '</div>' +
+        '<div class="chips">' + defectChip(o.defect, o.inspected) +
+        (orderFor(o.defId) ? '<span class="chip chip-order">' + Art.icon('people') + 'Siparişi var</span>' : '') +
+        (o.haggled ? '<span class="chip chip-unknown">Pazarlık yapıldı</span>' : '') + '</div>' +
         condBar(o.condition) +
         '<div class="price-lines">' +
         '<span>İstenen fiyat</span><b>' + fmt(o.price) + '</b>' +
@@ -286,6 +336,7 @@
         (risky ? '<p class="note">* Gizli kusur varsa tamir pahalılaşır.</p>' : '') +
         '<div class="card-actions">' +
         (risky ? '<button class="btn btn-secondary" data-act="inspect" data-uid="' + o.uid + '"' + (S.money < ic ? ' disabled' : '') + '><span data-icon="search"></span>İncele' + (ic ? ' · ' + fmt(ic) : ' (ücretsiz)') + '</button>' : '') +
+        (!o.haggled ? '<button class="btn btn-secondary" data-act="haggle" data-uid="' + o.uid + '"><span data-icon="handshake"></span>Pazarlık</button>' : '') +
         '<button class="btn btn-primary" data-act="buy" data-uid="' + o.uid + '"' + (hint ? ' disabled' : '') + '>Satın Al · ' + coin() + fmt(o.price) + '</button></div>' +
         (hint ? '<p class="hint">' + hint + '</p>' : '') +
         '</div></article>';
@@ -313,6 +364,9 @@
       var cls = 'card' + (isNew ? ' new' : '') + (sparkleUid === it.uid ? ' sparkle' : '');
       var chips = (it.repaired ? '<span class="chip chip-repaired">Tamirli</span>' : '') +
         (it.defect && !it.defectFixed ? defectChip(it.defect, true) : '');
+      var ord = orderFor(it.defId);
+      var ordOk = ord && E.orderMatches(ord, it);
+      if (ord) chips += '<span class="chip chip-order">' + Art.icon('people') + esc(ord.customer) + ' istiyor</span>';
       return '<article class="' + cls + '" data-uid="' + it.uid + '">' +
         '<div class="card-art">' + artHtml(it.defId, it.condition) + '</div>' +
         '<div class="card-body">' +
@@ -329,8 +383,10 @@
         '</div>' +
         '<div class="card-actions">' +
         (canRep ? '<button class="btn btn-blue" data-act="repair" data-uid="' + it.uid + '"' + (S.money < rc ? ' disabled' : '') + '><span data-icon="wrench"></span>Tamir · ' + fmt(rc) + '</button>' : '') +
+        (ordOk ? '<button class="btn btn-gold" data-act="fulfill" data-order="' + ord.uid + '" data-uid="' + it.uid + '"><span data-icon="people"></span>Siparişe ver · ' + fmt(E.orderPrice(S, ord, it)) + '</button>' : '') +
         '<button class="btn btn-green" data-act="sell" data-uid="' + it.uid + '"><span data-icon="tag"></span>Sat · ' + fmt(price) + '</button>' +
         '</div>' +
+        (ord && !ordOk ? '<p class="note">' + esc(ord.customer) + ' bunu durumu en az %' + ord.minCond + (it.defect && !it.defectFixed ? ' ve kusursuz' : '') + ' olarak istiyor; tamir edip teslim edersen ' + fmt(E.orderPrice(S, ord, { defId: it.defId, demand: it.demand, condition: Math.max(ord.minCond, E.repairTarget(S)) })) + ' öder.</p>' : '') +
         (canRep && S.money < rc ? '<p class="hint">Tamir için ' + fmt(rc - S.money) + ' para eksik.</p>' : '') +
         (!canRep && (it.market || 100) <= 94 ? '<p class="note">Piyasa bugün düşük. Yarın daha iyi olabilir, ama her gün kira ödersin.</p>' : '') +
         '</div></article>';
@@ -379,7 +435,9 @@
     opts = opts || {};
     renderMoney(!!opts.animateMoney);
     renderHeader();
+    renderEvent();
     renderShop();
+    renderOrders();
     renderMarket();
     renderStorage(opts.sparkle);
     renderUpgrades(opts.flash);
@@ -405,7 +463,10 @@
     };
     if (onBind) onBind(r);
   }
-  function closeModal() { var r = $('modalRoot'); r.hidden = true; r.innerHTML = ''; }
+  function closeModal() {
+    if (mini && mini.raf) cancelAnimationFrame(mini.raf);
+    var r = $('modalRoot'); r.hidden = true; r.innerHTML = '';
+  }
 
   function cardEl(container, uid) { return $(container).querySelector('.card[data-uid="' + uid + '"]'); }
 
@@ -484,9 +545,63 @@
     );
   }
 
-  function doRepair(uid, btn) {
+  /* ---------------- Tamir mini oyunu: Usta Dokunuşu ---------------- */
+  var mini = null;
+  function askRepair(uid, btn) {
     if (busy) return;
-    var res = G.repair(S, uid);
+    var idx = G.findIndex(S.inventory, uid);
+    if (idx < 0) return;
+    var it = S.inventory[idx];
+    var cost = E.repairCost(S, it);
+    if (S.money < cost) return fail('Tamir için paran yetmiyor.');
+    var C = DU.CONFIG.repairBonus;
+    openModal(
+      '<h3 class="center">Usta Dokunuşu</h3>' +
+      '<p class="center">İbre <b class="pos">yeşil</b> alana gelince <b>Vur!</b> de. Mükemmel vuruş: durum <b>+' + C.perfect + '</b>, iyi vuruş: <b>+' + C.good + '</b>.</p>' +
+      '<div class="mini-art">' + artHtml(it.defId, it.condition) + '</div>' +
+      '<div class="mini-bar" id="miniBar"><i class="z-good"></i><i class="z-perfect"></i><b class="needle" id="miniNeedle"></b></div>' +
+      '<div class="mini-result" id="miniResult">Tamir maliyeti: ' + fmt(cost) + '</div>' +
+      '<div class="modal-actions"><button class="btn btn-secondary" id="miniSkip">Hızlı tamir</button>' +
+      '<button class="btn btn-blue" id="miniHit"><span data-icon="wrench"></span>Vur!</button></div>',
+      function (r) {
+        fillIcons(r);
+        var needle = r.querySelector('#miniNeedle');
+        var period = 1300, t0 = performance.now(), done = false, pos = 0;
+        // Zorluk: her tamirde ibre biraz farklı hızda
+        period = 1100 + Math.floor(Math.random() * 500);
+        function frame(ts) {
+          if (done) return;
+          var ph = ((ts - t0) % period) / period;
+          pos = ph < 0.5 ? ph * 2 : 2 - ph * 2;   // 0→1→0
+          needle.style.left = (pos * 100) + '%';
+          mini.raf = requestAnimationFrame(frame);
+        }
+        mini = { raf: requestAnimationFrame(frame), uid: uid };
+        function finish(quality) {
+          if (done) return;
+          done = true;
+          cancelAnimationFrame(mini.raf);
+          var label = quality === 'perfect' ? 'Mükemmel! +' + C.perfect : quality === 'good' ? 'İyi vuruş! +' + C.good : 'Kaçtı! Normal tamir.';
+          var el = r.querySelector('#miniResult');
+          el.textContent = label;
+          el.className = 'mini-result ' + (quality || 'miss');
+          Snd.play(quality === 'perfect' ? 'goal' : quality ? 'click' : 'error');
+          setTimeout(function () { closeModal(); doRepair(uid, btn, quality); }, quality ? 650 : 500);
+        }
+        function hit() {
+          var d = Math.abs(pos - 0.5);             // merkeze uzaklık
+          finish(d <= 0.05 ? 'perfect' : d <= 0.15 ? 'good' : null);
+        }
+        r.querySelector('#miniHit').onclick = hit;
+        r.querySelector('#miniBar').onclick = hit;
+        r.querySelector('#miniSkip').onclick = function () { done = true; cancelAnimationFrame(mini.raf); closeModal(); doRepair(uid, btn, null); };
+      }
+    );
+  }
+
+  function doRepair(uid, btn, quality) {
+    if (busy) return;
+    var res = G.repair(S, uid, quality);
     if (!res.ok) return fail(res.reason);
     busy = true;
     save();
@@ -502,9 +617,97 @@
     setTimeout(function () {
       busy = false;
       renderAll({ sparkle: uid });
-      toast('Tamir tamam! Durum %' + res.before + ' → %' + res.after + (res.fixedDefect ? ' · ' + res.fixedDefect.name + ' giderildi' : ''), 'ok');
+      toast('Tamir tamam! Durum %' + res.before + ' → %' + res.after + (res.bonus ? ' (usta dokunuşu +' + res.bonus + ')' : '') + (res.fixedDefect ? ' · ' + res.fixedDefect.name + ' giderildi' : ''), 'ok');
       handleGoals(res, 400);
     }, 1100);
+  }
+
+  /* ---------------- Pazarlık ---------------- */
+  function askHaggle(uid) {
+    if (busy) return;
+    var idx = G.findIndex(S.offers, uid);
+    if (idx < 0) return;
+    var o = S.offers[idx];
+    var H = DU.CONFIG.haggle;
+    function opt(level, cls) {
+      var h = H[level], ch = Math.round(E.haggleChance(S, o, level) * 100);
+      var risk = Math.round(h.leaveOnFail * 100);
+      return '<button class="haggle-opt ' + cls + '" data-level="' + level + '">' +
+        '<b>' + h.label + ' (−%' + Math.round(h.discount * 100) + ')</b>' +
+        '<span>Yeni fiyat: <b>' + fmt(Math.round(o.price * (1 - h.discount))) + '</b></span>' +
+        '<span>Başarı şansı: <b>%' + ch + '</b></span>' +
+        '<small>Olmazsa: satıcı %' + risk + ' ihtimalle gider' + (h.raiseOnFail ? ', kalırsa fiyatı %' + Math.round(h.raiseOnFail * 100) + ' artırır' : '') + '.</small></button>';
+    }
+    openModal(
+      '<div class="modal-hero" style="width:96px;height:96px">' + Art.item(o.defId) + '</div>' +
+      '<h3 class="center">Pazarlık: ' + esc(E.itemDef(o.defId).name) + '</h3>' +
+      '<p class="center">Satıcı <b>' + fmt(o.price) + '</b> istiyor. Tek şansın var! Fiyatı şişkin satıcılar daha kolay ikna olur.</p>' +
+      '<div class="haggle-opts">' + opt('az', '') + opt('cok', 'risky') + '</div>' +
+      '<div class="modal-actions single"><button class="btn btn-secondary" data-close>Vazgeç</button></div>',
+      function (r) {
+        var bs = r.querySelectorAll('.haggle-opt');
+        for (var i = 0; i < bs.length; i++) bs[i].onclick = function () { doHaggle(uid, this.getAttribute('data-level'), r); };
+      }
+    );
+  }
+
+  function doHaggle(uid, level, r) {
+    if (busy) return;
+    busy = true;
+    var box = r.querySelector('.haggle-opts');
+    box.innerHTML = '<div class="thinking"><span></span><span></span><span></span><p>Satıcı düşünüyor...</p></div>';
+    Snd.play('inspect');
+    setTimeout(function () {
+      busy = false;
+      var res = G.haggle(S, uid, level);
+      if (!res.ok) { closeModal(); return fail(res.reason); }
+      save();
+      closeModal();
+      var name = E.itemDef(res.offer.defId).name;
+      if (res.result === 'win') {
+        Snd.play('sell');
+        toast('Anlaştınız! ' + name + ': ' + fmt(res.before) + ' → ' + fmt(res.price), 'ok');
+        renderAll();
+        var card = cardEl('offers', uid);
+        if (card) { card.classList.add('sparkle'); floatNum(card, res.before - res.price, '−' + fmt(res.before - res.price)); }
+      } else if (res.result === 'left') {
+        Snd.play('error');
+        toast('Satıcı kızdı ve ' + name + ' ile çekip gitti!', 'err');
+        var c2 = cardEl('offers', uid);
+        if (c2) c2.classList.add('leaving');
+        setTimeout(renderAll, 330);
+      } else {
+        Snd.play('error');
+        toast('Satıcı ikna olmadı.' + (res.price > res.before ? ' Üstelik fiyatı ' + fmt(res.price) + ' yaptı!' : ' Fiyat aynı kaldı.'), 'err');
+        renderAll();
+      }
+      handleGoals(res, 400);
+    }, 1100);
+  }
+
+  /* ---------------- Sipariş teslimi ---------------- */
+  function doFulfill(orderUid, itemUid, btn) {
+    if (busy) return;
+    var card = cardEl('inventory', itemUid) || btn;
+    var oi = G.findIndex(S.orders, orderUid);
+    var customer = oi >= 0 ? S.orders[oi].customer : 'Müşteri';
+    var res = G.fulfillOrder(S, orderUid, itemUid);
+    if (!res.ok) return fail(res.reason);
+    busy = true;
+    save();
+    Snd.play('sell');
+    setTimeout(function () { Snd.play('goal'); }, 250);
+    if (card && card.classList) card.classList.add('leaving');
+    floatNum(card, res.profit, 'Kâr ' + signed(res.profit));
+    flyCoins(card, 8);
+    toast(customer + ' çok memnun! ' + E.itemDef(res.item.defId).name + ' için ' + fmt(res.price) + ' ödedi (net ' + signed(res.profit) + ') · +' + res.xp + ' XP', 'gold');
+    setTimeout(function () {
+      busy = false;
+      renderAll({ animateMoney: true });
+      if (res.debtPaid) toast('Ödemeden ' + fmt(res.debtPaid) + ' kira borcu kesildi.', 'err');
+      if (res.levelUps > 0) showLevelUp(res.unlocked);
+      handleGoals(res, res.levelUps > 0 ? 200 : 100);
+    }, 900);
   }
 
   function askSell(uid) {
@@ -593,6 +796,8 @@
     var affordable = S.offers.filter(function (o) { return o.price <= S.money; }).length;
     var warns = '';
     if (affordable && S.inventory.length < E.capacity(S)) warns += '<li>Pazarda alabileceğin <b>' + affordable + '</b> teklif var; yarın kaybolacaklar.</li>';
+    var ending = (S.orders || []).filter(function (o) { return o.expires <= S.day; });
+    if (ending.length) warns += '<li class="neg"><b>' + ending.length + '</b> müşteri siparişinin bugün son günü!</li>';
     if (unsold) warns += '<li>Depoda satışa hazır <b>' + unsold + '</b> eşya var. Yarın piyasa fiyatları değişecek (iyi ya da kötü).</li>';
     if (S.money < rent) warns += '<li class="neg">Kasada kira için yeterli para yok: <b>' + fmt(rent - S.money) + '</b> borç yazılacak ve sonraki satışlarından kesilecek.</li>';
     openModal(
@@ -622,6 +827,10 @@
     var rp = res.report;
     toast('Gün ' + res.day + ' başladı. Kira −' + fmt(rp.paid) + (rp.debt ? ' · Borç ' + fmt(rp.debt) : '') + ' · ' + S.offers.length + ' yeni teklif', rp.debt ? 'err' : 'gold');
     if (res.help) toast('Esnaf komşun sana ' + fmt(res.help) + ' para destek verdi ve borcunu sildi.', 'ok');
+    var ev = E.eventDef(S);
+    if (ev) setTimeout(function () { toast(ev.title + ': ' + E.eventText(S), 'gold'); }, 400);
+    if (rp.ordersAdded && rp.ordersAdded.length) setTimeout(function () { toast('Yeni sipariş: ' + rp.ordersAdded[0].customer + ' bir ' + E.itemDef(rp.ordersAdded[0].defId).name + ' arıyor!', 'ok'); }, 800);
+    if (rp.ordersExpired && rp.ordersExpired.length) setTimeout(function () { toast(rp.ordersExpired.length + ' siparişin süresi doldu.', 'err'); }, 1200);
     var dim = $('dayFade');
     dim.classList.remove('go'); void dim.offsetWidth; dim.classList.add('go');
     renderAll({ animateMoney: true });
@@ -638,14 +847,29 @@
       '<li><b class="n">1</b><span>Üstteki <b>HEDEF</b> çubuğu sana her an ne yapacağını söyler. <b>Git ›</b> ile doğru sekmeye geçersin.</span></li>' +
       '<li><b class="n">2</b><span><b>Pazar</b>’da her teklif kârlı değildir. Bazı satıcılar fazla ister, bazı eşyalarda <b>gizli kusur</b> olur. Şüphelenirsen <b>İncele</b>.</span></li>' +
       '<li><b class="n">3</b><span><b>Depo</b>’da tamir et ve sat: <b>Satış − Alış − Tamir = Net kâr</b>. Piyasa her gün değişir.</span></li>' +
-      '<li><b class="n">4</b><span><b>Günü Bitir</b> dediğinde kira ödersin. Günleri boşa harcama!</span></li>' +
+      '<li><b class="n">4</b><span>Satıcıyla <b>Pazarlık</b> yap, <b>müşteri siparişlerini</b> yetiştir: daha çok kazanırsın.</span></li>' +
+      '<li><b class="n">5</b><span><b>Günü Bitir</b> dediğinde kira ödersin. Her gün yeni bir <b>olay</b> olabilir; fırsatları kaçırma!</span></li>' +
       '</ol>' +
       '<div class="modal-actions single"><button class="btn btn-primary" id="tutGo">Başla: Pazara Git</button></div>',
       function (r) {
         r.querySelector('#tutGo').onclick = function () { closeModal(); showView('market'); };
       }
     );
-    if (!S.tutorialSeen) { S.tutorialSeen = true; save(); }
+    if (!S.tutorialSeen) { S.tutorialSeen = true; S.newsSeen = 3; save(); }
+  }
+
+  function showNews() {
+    openModal(
+      '<h3 class="center">Dükkânda yenilikler!</h3>' +
+      '<ol class="tut-steps">' +
+      '<li><b class="n">' + Art.icon('handshake') + '</b><span><b>Pazarlık:</b> Pazar’da satıcıyla bir kez pazarlık yapabilirsin. Şişkin fiyatlarda şansın yüksek, ama satıcı kızıp gidebilir.</span></li>' +
+      '<li><b class="n">' + Art.icon('people') + '</b><span><b>Müşteri siparişleri:</b> Müşteriler belirli eşyaları ister ve normalden çok öder. Süreleri sınırlı!</span></li>' +
+      '<li><b class="n">' + Art.icon('star') + '</b><span><b>Günlük olaylar:</b> Bit pazarı, turist kafilesi, yağmur, elektrik kesintisi... Her gün planını değiştirebilir.</span></li>' +
+      '<li><b class="n">' + Art.icon('wrench') + '</b><span><b>Usta Dokunuşu:</b> Tamirde ibreyi yeşilde yakala, eşya daha iyi durumda çıksın.</span></li>' +
+      '</ol>' +
+      '<div class="modal-actions single"><button class="btn btn-primary" data-close>Hadi bakalım!</button></div>'
+    );
+    S.newsSeen = 3; save();
   }
 
   function showSettings() {
@@ -655,7 +879,8 @@
       '<div class="setting-row"><span>Ses efektleri</span><button class="switch' + (on ? ' on' : '') + '" id="sndSwitch" aria-label="Ses aç/kapat"></button></div>' +
       '<div class="setting-row"><span>Nasıl oynanır?</span><button class="btn btn-small btn-secondary" id="tutBtn">Göster</button></div>' +
       '<div class="setting-row"><span>Oyunu sıfırla</span><button class="btn btn-small btn-danger" id="resetBtn">Sıfırla</button></div>' +
-      '<p style="margin-top:12px;font-size:.8rem">İlerlemen bu cihazda otomatik kaydedilir. Sürüm 0.2.0 (prototip)</p>',
+      '<div class="setting-row"><span>Gizlilik politikası</span><a class="btn btn-small btn-secondary" href="gizlilik.html" target="_blank" rel="noopener">Aç</a></div>' +
+      '<p style="margin-top:12px;font-size:.8rem">İlerlemen bu cihazda otomatik kaydedilir. Sürüm 0.3.0 (prototip)</p>',
       function (r) {
         r.querySelector('#sndSwitch').onclick = function () {
           S.settings.sound = !S.settings.sound;
@@ -719,12 +944,16 @@
       var uid = parseInt(b.getAttribute('data-uid'), 10);
       if (act === 'buy') doBuy(uid, b);
       else if (act === 'inspect') doInspect(uid, b);
-      else if (act === 'repair') doRepair(uid, b);
+      else if (act === 'repair') askRepair(uid, b);
+      else if (act === 'haggle') askHaggle(uid);
+      else if (act === 'fulfill') doFulfill(parseInt(b.getAttribute('data-order'), 10), uid, b);
+      else if (act === 'goto') { Snd.play('click'); showView(b.getAttribute('data-view')); }
       else if (act === 'sell') askSell(uid);
       else if (act === 'upgrade') doUpgrade(b.getAttribute('data-id'), b);
     });
 
     doc.addEventListener('keydown', function (e) {
+      if ((e.key === ' ' || e.key === 'Enter') && doc.getElementById('miniHit')) { e.preventDefault(); doc.getElementById('miniHit').click(); return; }
       if (e.key === 'Escape' && !$('modalRoot').hidden) closeModal();
     });
   }
@@ -740,6 +969,7 @@
       if (loadStatus === 'corrupt') toast('Kayıt dosyası okunamadı, yeni oyun başlatıldı.', 'err');
       else if (loadStatus === 'loaded') toast('Hoş geldin! Kaldığın yerden devam ediyorsun.', 'ok');
       if (!S.tutorialSeen) showTutorial();
+      else if ((S.newsSeen || 0) < 3) showNews();
     },
     // Android geri tuşu için: açık modal varsa kapatır, true döner.
     handleBack: function () {

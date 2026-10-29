@@ -27,7 +27,8 @@
 
     emptyStats: function () {
       return { totalProfit: 0, sold: 0, bought: 0, repairs: 0, revenue: 0, bestDeal: 0,
-        profitableSales: 0, inspections: 0, upgradesBought: 0, rentPaid: 0, defectsFound: 0, soldByItem: {} };
+        profitableSales: 0, inspections: 0, upgradesBought: 0, rentPaid: 0, defectsFound: 0,
+        haggleTries: 0, haggleWins: 0, ordersDone: 0, perfectRepairs: 0, soldByItem: {} };
     },
 
     newState: function () {
@@ -41,16 +42,22 @@
         upgrades: { atolye: 0, vitrin: 0, depo: 0, uzman: 0, ag: 0 },
         inventory: [],
         offers: [],
+        orders: [],
+        event: null,
         stats: G.emptyStats(),
         today: { profit: 0, sales: 0 },
         goalIndex: 0,
         log: [],
         settings: { sound: true },
         tutorialSeen: false,
+        newsSeen: 3,
         helpUsed: false,
         nextUid: 1
       };
       G.generateOffers(s);
+      // İlk gün öğretici bir sipariş: ucuz bir eşyayı tamirli getir.
+      var cheap = E.unlockedItems(1).slice().sort(function (a, b) { return a.base - b.base; })[G.randInt(0, 1)];
+      s.orders.push(G.makeOrder(s, cheap, { minCond: 80, days: 3 }));
       return s;
     },
 
@@ -62,13 +69,42 @@
       // Makul teklif: yıpranmış (tamirle çok değerlenir) ve uygun fiyatlı.
       var cond = G.randInt(C.offerCondition.min, opts.fair ? 45 : C.offerCondition.max);
       var maxAsk = opts.fair ? Math.min(C.askFactor.max, 0.92) : C.askFactor.max;
-      var factor = G.rand(C.askFactor.min, maxAsk) * (1 - E.buyDiscount(s));
+      var askF = G.rand(C.askFactor.min, maxAsk);
+      var factor = askF * (1 - E.buyDiscount(s)) * E.eventAsk(s);
       var price = Math.max(10, Math.round(E.valueAt(def.base, cond) * factor));
       var chance = C.defectChance.base + C.defectChance.perItemLevel * def.minLevel;
       var defect = !opts.clean && G.rng() < chance ? G.pickWeighted(C.defects, function () { return 1; }).id : null;
       var auto = (s.upgrades.uzman || 0) >= 2;
       return { uid: G.uid(s), defId: def.id, condition: cond, demand: G.pickDemand(), price: price,
-        defect: defect, inspected: auto };
+        defect: defect, inspected: auto, haggled: false,
+        askF: Math.round(askF * 100) / 100, mood: Math.round(G.rand(-0.12, 0.12) * 100) / 100 };
+    },
+
+    /* ---------------- Siparişler ---------------- */
+    makeOrder: function (s, def, opts) {
+      opts = opts || {};
+      var minCond = opts.minCond || (G.rng() < 0.5 ? 60 : Math.min(100, E.repairTarget(s)));
+      return {
+        uid: G.uid(s), defId: def.id, minCond: minCond,
+        mult: Math.round(G.rand(C.orders.mult.min, C.orders.mult.max) * 100) / 100,
+        expires: s.day + (opts.days || G.randInt(C.orders.days.min, C.orders.days.max)),
+        customer: C.customers[G.randInt(0, C.customers.length - 1)]
+      };
+    },
+
+    /** Süresi geçen siparişleri sil, şansa göre yeni sipariş ekle. */
+    refreshOrders: function (s) {
+      var expired = s.orders.filter(function (o) { return o.expires < s.day; });
+      s.orders = s.orders.filter(function (o) { return o.expires >= s.day; });
+      var max = s.level >= 4 ? C.orders.maxAtLevel4 : C.orders.max;
+      var added = [];
+      if (s.orders.length < max && G.rng() < C.orders.chancePerDay) {
+        var pool = E.unlockedItems(s.level);
+        var o = G.makeOrder(s, G.pickWeighted(pool, function (d) { return 1 + d.minLevel * 0.4; }));
+        s.orders.push(o);
+        added.push(o);
+      }
+      return { expired: expired, added: added };
     },
 
     /** Günün tekliflerini üretir. İlk teklif her zaman ucuz ve makul fiyatlıdır (kilitlenme önleme);
@@ -152,7 +188,50 @@
       return G.finish(s, { ok: true, cost: cost, offer: o, defect: E.defectDef(o.defect) });
     },
 
-    /** Pazardan eşya satın al. Gizli kusur varsa burada ortaya çıkar. */
+    /** Pazarlık: her teklifte bir kez. level 'az' (−%10) ya da 'cok' (−%22).
+     *  Başarısızlıkta satıcı gidebilir (teklif silinir) ya da fiyatı artırabilir. */
+    haggle: function (s, offerUid, level) {
+      var idx = G.findIndex(s.offers, offerUid);
+      if (idx < 0) return { ok: false, reason: 'Bu teklif artık geçerli değil.' };
+      var o = s.offers[idx];
+      var h = C.haggle[level];
+      if (!h) return { ok: false, reason: 'Geçersiz pazarlık.' };
+      if (o.haggled) return { ok: false, reason: 'Bu satıcıyla zaten pazarlık yaptın.' };
+      var chance = E.haggleChance(s, o, level);
+      var name = E.itemDef(o.defId).name;
+      o.haggled = true;
+      s.stats.haggleTries++;
+      var before = o.price;
+      if (G.rng() < chance) {
+        o.price = Math.max(10, Math.round(o.price * (1 - h.discount)));
+        s.stats.haggleWins++;
+        G.addLog(s, 'haggle', name + ': pazarlık başarılı (' + before + ' → ' + o.price + ')', 0);
+        return G.finish(s, { ok: true, result: 'win', before: before, price: o.price, chance: chance, offer: o });
+      }
+      if (G.rng() < h.leaveOnFail) {
+        s.offers.splice(idx, 1);
+        G.addLog(s, 'haggle', name + ': satıcı kızıp gitti', 0);
+        return G.finish(s, { ok: true, result: 'left', before: before, chance: chance, offer: o });
+      }
+      if (h.raiseOnFail) o.price = Math.round(o.price * (1 + h.raiseOnFail));
+      return G.finish(s, { ok: true, result: 'fail', before: before, price: o.price, chance: chance, offer: o });
+    },
+
+    /** Siparişi depodaki uygun bir eşyayla teslim et. */
+    fulfillOrder: function (s, orderUid, itemUid) {
+      var oi = G.findIndex(s.orders, orderUid);
+      if (oi < 0) return { ok: false, reason: 'Bu sipariş artık geçerli değil.' };
+      var order = s.orders[oi];
+      var idx = G.findIndex(s.inventory, itemUid);
+      if (idx < 0) return { ok: false, reason: 'Eşya bulunamadı.' };
+      var item = s.inventory[idx];
+      if (!E.orderMatches(order, item)) return { ok: false, reason: 'Bu eşya siparişin şartlarını karşılamıyor.' };
+      var price = E.orderPrice(s, order, item);
+      s.orders.splice(oi, 1);
+      s.stats.ordersDone++;
+      return G.completeSale(s, idx, price, ' (' + order.customer + ' siparişi)', { order: order });
+    },
+
     buy: function (s, offerUid) {
       var idx = G.findIndex(s.offers, offerUid);
       if (idx < 0) return { ok: false, reason: 'Bu teklif artık geçerli değil.' };
@@ -175,8 +254,9 @@
         surprise: !!(item.defect && !offer.inspected), defect: E.defectDef(item.defect) });
     },
 
-    /** Depodaki eşyayı tamir et (kusur varsa o da giderilir). */
-    repair: function (s, itemUid) {
+    /** Depodaki eşyayı tamir et (kusur varsa o da giderilir).
+     *  quality: tamir mini oyunu sonucu 'perfect' | 'good' | (boş) → ek durum puanı. */
+    repair: function (s, itemUid, quality) {
       var idx = G.findIndex(s.inventory, itemUid);
       if (idx < 0) return { ok: false, reason: 'Eşya bulunamadı.' };
       var item = s.inventory[idx];
@@ -188,21 +268,27 @@
       var fixedDefect = item.defect && !item.defectFixed ? E.defectDef(item.defect) : null;
       s.money -= cost;
       item.repairSpent += cost;
-      item.condition = Math.max(item.condition, E.repairTarget(s));
+      var bonus = quality === 'perfect' ? C.repairBonus.perfect : quality === 'good' ? C.repairBonus.good : 0;
+      item.condition = Math.min(100, Math.max(item.condition, E.repairTarget(s)) + bonus);
       item.defectFixed = true;
       item.repaired = true;
       s.stats.repairs++;
+      if (quality === 'perfect') s.stats.perfectRepairs++;
       G.addLog(s, 'repair', def.name + ' tamir edildi', -cost);
-      return G.finish(s, { ok: true, item: item, cost: cost, before: before, after: item.condition, fixedDefect: fixedDefect });
+      return G.finish(s, { ok: true, item: item, cost: cost, before: before, after: item.condition, bonus: bonus, fixedDefect: fixedDefect });
     },
 
     /** Depodaki eşyayı sat. Net kâr = satış − alış − tamir. Borç varsa satıştan kesilir. */
     sell: function (s, itemUid) {
       var idx = G.findIndex(s.inventory, itemUid);
       if (idx < 0) return { ok: false, reason: 'Eşya bulunamadı.' };
+      return G.completeSale(s, idx, E.sellPrice(s, s.inventory[idx]), '', {});
+    },
+
+    /** Satışın ortak kısmı (normal satış ve sipariş teslimi). */
+    completeSale: function (s, idx, price, note, extra) {
       var item = s.inventory[idx];
       var def = E.itemDef(item.defId);
-      var price = E.sellPrice(s, item);
       var profit = E.profit(price, item.buyPrice, item.repairSpent);
       var debtPaid = Math.min(s.debt, price);
       s.debt -= debtPaid;
@@ -216,14 +302,16 @@
       s.stats.soldByItem[item.defId] = (s.stats.soldByItem[item.defId] || 0) + 1;
       s.today.profit += profit;
       s.today.sales++;
-      G.addLog(s, 'sell', def.name + ' satıldı (kâr ' + (profit >= 0 ? '+' : '') + profit + ')', price);
+      G.addLog(s, 'sell', def.name + ' satıldı' + note + ' (kâr ' + (profit >= 0 ? '+' : '') + profit + ')', price);
       if (debtPaid) G.addLog(s, 'debt', 'Kira borcu ödendi', -debtPaid);
       var xp = E.xpForSale(profit);
       var lv = G.addXp(s, xp);
-      return G.finish(s, {
+      var res = {
         ok: true, price: price, profit: profit, buyPrice: item.buyPrice, repairSpent: item.repairSpent,
         debtPaid: debtPaid, xp: xp, levelUps: lv.levelUps, unlocked: lv.unlocked, item: item
-      });
+      };
+      for (var k in extra) res[k] = extra[k];
+      return G.finish(s, res);
     },
 
     /** XP ekle ve gerekirse seviye atlat. */
@@ -275,6 +363,19 @@
       s.today = { profit: 0, sales: 0 };
       s.inventory.forEach(function (it) { it.prevMarket = it.market; it.market = G.rollMarket(); });
 
+      // Günlük olay (teklifler üretilmeden önce seçilir; olay teklif sayısını/fiyatını etkileyebilir)
+      s.event = null;
+      if (DU.EVENTS && G.rng() < C.eventChance) {
+        var ev = DU.EVENTS[G.randInt(0, DU.EVENTS.length - 1)];
+        s.event = { id: ev.id };
+        if (ev.itemSell) {
+          var have = s.inventory.map(function (it) { return it.defId; });
+          var pool = have.length && G.rng() < 0.5 ? have : E.unlockedItems(s.level).map(function (d) { return d.id; });
+          s.event.defId = pool[G.randInt(0, pool.length - 1)];
+        }
+      }
+      var ord = G.refreshOrders(s);
+
       var help = 0;
       var cheapest = Math.min.apply(null, E.unlockedItems(s.level).map(function (d) { return d.base; }));
       // Kilitlenme önleme: depo boş ve para en ucuz eşyaya bile yetmiyorsa destek gelir, borç silinir.
@@ -287,6 +388,8 @@
       }
       G.generateOffers(s);
       report.rent = rent; report.paid = paid; report.debt = s.debt; report.help = help;
+      report.event = s.event; report.ordersExpired = ord.expired; report.ordersAdded = ord.added;
+      ord.expired.forEach(function (o) { G.addLog(s, 'order', o.customer + ' siparişi süresi doldu', 0); });
       return G.finish(s, { ok: true, day: s.day, help: help, report: report });
     }
   };

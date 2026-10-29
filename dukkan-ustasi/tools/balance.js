@@ -9,6 +9,7 @@ function smartDay(s) {
   // İyi oyuncu: inceler, yalnızca kârlı teklifleri alır, tamir eder, piyasa kötüyse bir gün bekler.
   const sellReady = () => s.inventory.slice().forEach(it => {
     if (E.canRepair(s, it)) { if (s.money < E.repairCost(s, it) && s.day - it.boughtDay >= 1) G.sell(s, it.uid); return; }
+    if (s.orders.some(o => o.defId === it.defId)) return; // siparişi var, beklet
     if (it.market >= 93 || s.day - it.boughtDay >= 2) G.sell(s, it.uid);
   });
   sellReady();
@@ -19,11 +20,15 @@ function smartDay(s) {
     if (c !== null && s.level >= E.upgradeReqLevel(u, lvl) && s.money > c * 1.5 + 500) { G.buyUpgrade(s, id); break; }
   }
   s.offers.slice().forEach(o => { if (!o.inspected && E.expectedProfit(s, o) > E.inspectCost(s, o) * 2) G.inspect(s, o.uid); });
+  // Şişkin fiyatlı tekliflerde pazarlık dene
+  s.offers.slice().forEach(o => { if ((o.askF || 1) > 1.1 && !o.haggled) G.haggle(s, o.uid, 'az'); });
   s.offers.slice().sort((a, b) => E.expectedProfit(s, b) - E.expectedProfit(s, a)).forEach(o => {
     const exp = E.expectedProfit(s, o);
     if (exp > o.price * 0.12 && s.money - o.price - E.repairCost(s, E.offerAsItem(o)) >= 0) G.buy(s, o.uid);
   });
-  s.inventory.forEach(it => { if (E.canRepair(s, it)) G.repair(s, it.uid); });
+  s.inventory.forEach(it => { if (E.canRepair(s, it)) G.repair(s, it.uid, G.rng() < 0.4 ? 'perfect' : 'good'); });
+  // Siparişleri teslim et
+  s.orders.slice().forEach(o => { const it = s.inventory.find(i => E.orderMatches(o, i)); if (it) G.fulfillOrder(s, o.uid, it.uid); });
   sellReady();
   G.nextDay(s);
 }

@@ -53,8 +53,20 @@
     }).map(function (o) {
       maxUid = Math.max(maxUid, o.uid);
       return { uid: o.uid, defId: o.defId, condition: o.condition, demand: o.demand, price: o.price,
-        defect: o.defect || null, inspected: !!o.inspected };
+        defect: o.defect || null, inspected: !!o.inspected, haggled: !!o.haggled,
+        askF: typeof o.askF === 'number' && isFinite(o.askF) ? o.askF : 1,
+        mood: typeof o.mood === 'number' && isFinite(o.mood) ? Math.max(-0.3, Math.min(0.3, o.mood)) : 0 };
     });
+    s.orders = (Array.isArray(raw.orders) ? raw.orders : []).filter(function (o) {
+      return o && isInt(o.uid) && known(DU.ITEMS, o.defId) && isInt(o.minCond) && isInt(o.expires) &&
+        typeof o.mult === 'number' && o.mult > 0 && o.mult < 5 && typeof o.customer === 'string';
+    }).map(function (o) {
+      maxUid = Math.max(maxUid, o.uid);
+      return { uid: o.uid, defId: o.defId, minCond: o.minCond, mult: o.mult, expires: o.expires, customer: o.customer };
+    });
+    s.event = raw.event && known(DU.EVENTS || [], raw.event.id)
+      ? { id: raw.event.id, defId: known(DU.ITEMS, raw.event.defId) ? raw.event.defId : undefined } : null;
+    if (s.event && s.event.defId === undefined) delete s.event.defId;
     var st = raw.stats || {};
     Object.keys(s.stats).forEach(function (k) {
       if (k === 'soldByItem') return;
@@ -70,6 +82,7 @@
     }) : [];
     s.settings = { sound: !(raw.settings && raw.settings.sound === false) };
     s.tutorialSeen = !!raw.tutorialSeen;
+    s.newsSeen = intOr(raw.newsSeen, 0);
     s.helpUsed = !!raw.helpUsed;
     s.nextUid = Math.max(intOr(raw.nextUid, 1), maxUid + 1);
     if (offers.length) s.offers = offers;
@@ -88,6 +101,16 @@
       raw.debt = 0;
       raw.goalIndex = 0;
       v = 2;
+    }
+    if (v < 3) {
+      // v3: pazarlık, siparişler, günlük olaylar, yeni hedefler. Hedef ilerlemesi kimliğe göre taşınır.
+      var oldId = DU.GOALS_V2[isInt(raw.goalIndex) ? raw.goalIndex : 0];
+      var ni = -1;
+      DU.GOALS.forEach(function (g, i) { if (g.id === oldId) ni = i; });
+      raw.goalIndex = oldId === undefined ? DU.GOALS.length : Math.max(0, ni);
+      raw.orders = [];
+      raw.event = null;
+      v = 3;
     }
     raw.version = v;
     return raw;

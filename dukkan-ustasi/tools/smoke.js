@@ -48,7 +48,12 @@ const out = process.argv[2] || '.';
     await shot('4_depo');
 
     await page.click(`[data-act="repair"][data-uid="${offer.uid}"]`);
-    await page.waitForTimeout(1700);
+    await page.waitForTimeout(500);
+    await shot('4b_tamir_oyunu');
+    check(await page.$('#miniHit') !== null, name + ': tamir mini oyunu açılmadı');
+    await page.click('#miniHit');
+    await page.waitForTimeout(2000);
+    check(await page.evaluate(() => DU.state.stats.repairs === 1), name + ': tamir yapılmadı');
     const it = await page.evaluate(() => DU.state.inventory[0]);
     await page.click(`[data-act="sell"][data-uid="${offer.uid}"]`);
     await page.waitForTimeout(450);
@@ -81,6 +86,28 @@ const out = process.argv[2] || '.';
     await page.waitForTimeout(1500);
     const nd = await page.evaluate(() => ({ m: DU.state.money, d: DU.state.day }));
     check(nd.d === before.d + 1, name + ': gün ilerlemedi');
+
+    // Pazarlık penceresi
+    await page.click('.tab[data-view="market"]');
+    await page.waitForTimeout(300);
+    const hu = await page.evaluate(() => { const o = DU.state.offers.find(o => !o.haggled); return o && o.uid; });
+    if (hu) {
+      await page.click(`[data-act="haggle"][data-uid="${hu}"]`);
+      await page.waitForTimeout(400);
+      await shot('7b_pazarlik');
+      await page.click('.haggle-opt[data-level="az"]');
+      await page.waitForTimeout(1600);
+      check(await page.evaluate(() => DU.state.stats.haggleTries === 1), name + ': pazarlık sayılmadı');
+    }
+    // Olay + sipariş görünümü
+    await page.evaluate(() => {
+      const s = DU.state; s.event = { id: 'koleksiyoncu', defId: 'radyo' };
+      s.orders = [DU.Game.makeOrder(s, DU.ITEMS[1], { minCond: 80, days: 2 }), DU.Game.makeOrder(s, DU.ITEMS[3], { minCond: 60, days: 0 })];
+      DU.UI.renderAll();
+    });
+    await page.click('.tab[data-view="shop"]');
+    await page.waitForTimeout(400);
+    await shot('7c_olay_siparis', name === 'telefon');
 
     // Kusurlu bir eşyayı habersiz al → sürpriz penceresi
     await page.evaluate(() => {

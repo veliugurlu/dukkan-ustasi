@@ -31,7 +31,48 @@
 
     offerSlots: function (state) {
       var n = C.baseOfferSlots + Math.floor((state.level - 1) / 2) + upg(state, 'ag');
-      return Math.min(C.maxOfferSlots, n);
+      var ev = E.eventDef(state);
+      return Math.min(C.maxOfferSlots, n) + ((ev && ev.extraOffers) || 0);
+    },
+
+    /* ---------------- Günlük olay ---------------- */
+    eventDef: function (state) { return state.event ? findBy(DU.EVENTS || [], state.event.id) : null; },
+    eventSell: function (state, defId) {
+      var ev = E.eventDef(state);
+      if (!ev) return 1;
+      var m = ev.sell || 1;
+      if (ev.itemSell && state.event.defId === defId) m *= ev.itemSell;
+      return m;
+    },
+    eventRepair: function (state) { var ev = E.eventDef(state); return (ev && ev.repair) || 1; },
+    eventAsk: function (state) { var ev = E.eventDef(state); return (ev && ev.ask) || 1; },
+    eventText: function (state) {
+      var ev = E.eventDef(state);
+      if (!ev) return '';
+      var d = state.event.defId ? E.itemDef(state.event.defId) : null;
+      return ev.desc.replace('{item}', d ? d.name : 'Bir eşya');
+    },
+
+    /* ---------------- Pazarlık ---------------- */
+    /** Pazarlık başarı şansı (0..1). level: 'az' | 'cok'. */
+    haggleChance: function (state, offer, level) {
+      var H = C.haggle, h = H[level];
+      if (!h) return 0;
+      var over = Math.max(0, (offer.askF || 1) - 1) * H.overpriceBonus;
+      var p = h.base + (offer.mood || 0) + over + H.perAgLevel * upg(state, 'ag');
+      return clamp(p, H.minChance, H.maxChance);
+    },
+
+    /* ---------------- Siparişler ---------------- */
+    orderMatches: function (order, item) {
+      return item.defId === order.defId && item.condition >= order.minCond && !(item.defect && !item.defectFixed);
+    },
+    /** Siparişte ödenen fiyat: günlük piyasa ve olaydan etkilenmez, sipariş çarpanı uygulanır. */
+    orderPrice: function (state, order, item) {
+      var def = E.itemDef(item.defId);
+      if (!def) return 0;
+      return Math.round(E.valueAt(def.base, item.condition) * E.demandDef(item.demand).mult *
+        (1 + E.sellBonus(state)) * order.mult);
     },
 
     /** Gün sonunda ödenen kira. */
@@ -63,7 +104,7 @@
       var gain = E.valueAt(def.base, target) - E.valueAt(def.base, item.condition);
       // Durumu zaten yüksek ama kusurlu eşya: kusur tamiri temel değerin %10'u üzerinden hesaplanır.
       var basis = Math.max(gain, Math.round(def.base * 0.1));
-      var cost = basis * C.repairCostRate * (1 - E.repairDiscount(state)) * (1 + E.defectExtra(state, item));
+      var cost = basis * C.repairCostRate * (1 - E.repairDiscount(state)) * (1 + E.defectExtra(state, item)) * E.eventRepair(state);
       return Math.max(1, Math.round(cost));
     },
 
@@ -75,7 +116,7 @@
       var def = E.itemDef(item.defId);
       if (!def) return 0;
       var p = E.valueAt(def.base, item.condition) * E.demandDef(item.demand).mult *
-        E.marketMult(item) * (1 + E.sellBonus(state));
+        E.marketMult(item) * (1 + E.sellBonus(state)) * E.eventSell(state, item.defId);
       if (item.defect && !item.defectFixed) p *= C.defectSellPenalty;
       return Math.round(p);
     },

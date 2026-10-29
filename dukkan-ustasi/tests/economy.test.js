@@ -235,7 +235,7 @@ test('kayıt: bozuk veri çökertmez, yedeklenir', () => {
   assert.equal(DU.Storage.load(store).status, 'corrupt');
 });
 
-test('kayıt: v1 kaydı v2ye taşınır', () => {
+test('kayıt: v1 kaydı güncel sürüme taşınır', () => {
   const store = memStore();
   store.setItem(DU.CONFIG.saveKey, JSON.stringify({
     version: 1, money: 1500, level: 2, day: 4, stats: { totalProfit: 300, sold: 3 },
@@ -244,7 +244,7 @@ test('kayıt: v1 kaydı v2ye taşınır', () => {
   }));
   const l = DU.Storage.load(store);
   assert.equal(l.status, 'loaded');
-  assert.equal(l.state.version, 2);
+  assert.equal(l.state.version, DU.CONFIG.saveVersion);
   assert.equal(l.state.inventory[0].market, 100);
   assert.equal(l.state.offers[0].inspected, true);
   assert.equal(l.state.debt, 0);
@@ -264,4 +264,121 @@ test('kayıt: bilinmeyen eşyalar ayıklanır', () => {
   assert.equal(l.status, 'loaded');
   assert.equal(l.state.inventory.length, 1);
   assert.ok(l.state.nextUid >= 5);
+});
+
+/* ---------------- v0.3: pazarlık, siparişler, olaylar, tamir mini oyunu ---------------- */
+
+test('pazarlık: başarıda indirim, her teklifte bir kez, şans sınırlar içinde', () => {
+  const s = G.newState();
+  s.goalIndex = DU.GOALS.length;
+  const o = s.offers[0];
+  const p0 = o.price;
+  G.rng = () => 0; // her zarı kazan
+  const r = G.haggle(s, o.uid, 'az');
+  assert.equal(r.result, 'win');
+  assert.equal(o.price, Math.round(p0 * (1 - DU.CONFIG.haggle.az.discount)));
+  assert.equal(s.stats.haggleWins, 1);
+  assert.equal(G.haggle(s, o.uid, 'az').ok, false, 'ikinci pazarlık yok');
+  for (const lv of ['az', 'cok']) {
+    const c = E.haggleChance(s, { askF: 1.35, mood: 0.3 }, lv);
+    assert.ok(c <= DU.CONFIG.haggle.maxChance && c >= DU.CONFIG.haggle.minChance);
+  }
+  assert.ok(E.haggleChance(s, { askF: 1.3, mood: 0 }, 'az') > E.haggleChance(s, { askF: 0.9, mood: 0 }, 'az'),
+    'şişkin fiyatta satıcı daha esnek');
+});
+
+test('pazarlık: başarısızlıkta satıcı gidebilir ya da fiyat artar', () => {
+  const s = G.newState();
+  const o = s.offers[0];
+  const seq = [0.99, 0.0]; let i = 0;
+  G.rng = () => seq[i++];          // kaybet, sonra "gitti" zarı
+  const r = G.haggle(s, o.uid, 'cok');
+  assert.equal(r.result, 'left');
+  assert.equal(G.findIndex(s.offers, o.uid), -1);
+  const o2 = s.offers[0]; const p = o2.price; i = 0;
+  const seq2 = [0.99, 0.99]; G.rng = () => seq2[i++];
+  const r2 = G.haggle(s, o2.uid, 'cok');
+  assert.equal(r2.result, 'fail');
+  assert.equal(o2.price, Math.round(p * 1.05));
+});
+
+test('sipariş: uygun eşyayla teslim, normalden fazla öder, şart sağlanmazsa reddedilir', () => {
+  G.rng = seeded(31);
+  const s = G.newState();
+  s.goalIndex = DU.GOALS.length;
+  assert.equal(s.orders.length, 1, 'ilk gün öğretici sipariş');
+  const order = s.orders[0];
+  s.money = 100000;
+  const offer = G.makeOffer(s, E.itemDef(order.defId), { clean: true });
+  s.offers.push(offer);
+  G.buy(s, offer.uid);
+  const it = s.inventory[0];
+  assert.equal(G.fulfillOrder(s, order.uid, it.uid).ok, false, 'tamirsiz eşya kabul edilmez');
+  G.repair(s, it.uid);
+  const normal = E.sellPrice(s, Object.assign({}, it, { market: 100 }));
+  const m0 = s.money;
+  const r = G.fulfillOrder(s, order.uid, it.uid);
+  assert.ok(r.ok);
+  assert.equal(r.price, E.orderPrice(s, order, it));
+  assert.ok(r.price > normal, 'sipariş daha fazla öder');
+  assert.equal(s.money, m0 + r.price);
+  assert.equal(r.profit, r.price - it.buyPrice - it.repairSpent);
+  assert.equal(s.stats.ordersDone, 1);
+  assert.equal(s.orders.length, 0);
+});
+
+test('sipariş: süresi dolanlar gün sonunda silinir', () => {
+  G.rng = seeded(32);
+  const s = G.newState();
+  s.orders[0].expires = s.day; // bugün son gün
+  G.rng = () => 0.99;           // yeni sipariş ve olay gelmesin
+  const r = G.nextDay(s);
+  assert.equal(r.report.ordersExpired.length, 1);
+  assert.equal(s.orders.length, 0);
+});
+
+test('günlük olaylar: satış, tamir ve teklif sayısını etkiler', () => {
+  G.rng = seeded(33);
+  const s = G.newState();
+  const it = { defId: 'radyo', condition: 80, demand: 'normal', market: 100 };
+  const base = E.sellPrice(s, it);
+  const rc0 = E.repairCost(s, { defId: 'radyo', condition: 40, demand: 'normal' });
+  s.event = { id: 'turist' };
+  assert.equal(E.sellPrice(s, it), Math.round(E.valueAt(280, 80) * 1.12));
+  s.event = { id: 'koleksiyoncu', defId: 'radyo' };
+  assert.ok(E.sellPrice(s, it) > base * 1.25);
+  assert.equal(E.sellPrice(s, Object.assign({}, it, { defId: 'abajur' })), E.sellPrice(Object.assign({}, s, { event: null }), Object.assign({}, it, { defId: 'abajur' })));
+  s.event = { id: 'kesinti' };
+  assert.ok(E.repairCost(s, { defId: 'radyo', condition: 40, demand: 'normal' }) > rc0);
+  s.event = { id: 'bitpazari' };
+  const slots = E.offerSlots(s);
+  s.event = null;
+  assert.equal(slots, E.offerSlots(s) + 2);
+  for (const ev of DU.EVENTS) { s.event = { id: ev.id, defId: 'radyo' }; assert.ok(E.eventText(s).length > 5); }
+});
+
+test('tamir mini oyunu: mükemmel vuruş ek durum verir (en fazla %100)', () => {
+  G.rng = seeded(34);
+  const s = G.newState();
+  s.money = 100000;
+  const a = G.makeOffer(s, DU.ITEMS[1], { clean: true }); s.offers.push(a); G.buy(s, a.uid);
+  const b = G.makeOffer(s, DU.ITEMS[1], { clean: true }); s.offers.push(b); G.buy(s, b.uid);
+  const c = G.makeOffer(s, DU.ITEMS[1], { clean: true }); s.offers.push(c); G.buy(s, c.uid);
+  assert.equal(G.repair(s, a.uid, 'perfect').after, E.repairTarget(s) + DU.CONFIG.repairBonus.perfect);
+  assert.equal(G.repair(s, b.uid, 'good').after, E.repairTarget(s) + DU.CONFIG.repairBonus.good);
+  assert.equal(G.repair(s, c.uid).after, E.repairTarget(s));
+  assert.equal(s.stats.perfectRepairs, 1);
+  s.upgrades.atolye = 4;
+  const d = G.makeOffer(s, DU.ITEMS[1], { clean: true }); s.offers.push(d); G.buy(s, d.uid);
+  assert.equal(G.repair(s, d.uid, 'perfect').after, 100);
+});
+
+test('kayıt: v2 kaydının hedef ilerlemesi yeni hedef listesine kimlikle taşınır', () => {
+  const store = memStore();
+  const v2idx = DU.GOALS_V2.indexOf('kar_400');
+  store.setItem(DU.CONFIG.saveKey, JSON.stringify({ version: 2, money: 900, goalIndex: v2idx, offers: [], inventory: [] }));
+  const l = DU.Storage.load(store);
+  assert.equal(l.status, 'loaded');
+  assert.equal(DU.GOALS[l.state.goalIndex].id, 'kar_400');
+  assert.deepEqual(l.state.orders, []);
 });

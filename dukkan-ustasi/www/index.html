@@ -55,6 +55,7 @@
     <main class="views">
       <!-- DÜKKÂN -->
       <section class="view active" id="view-shop">
+        <div class="event-banner" id="eventBanner" hidden></div>
         <div class="scene" id="scene">
           <div class="scene-wall"></div>
           <div class="scene-window"><div class="sun"></div><div class="cloud c1"></div><div class="cloud c2"></div></div>
@@ -77,6 +78,10 @@
         </div>
 
         <div class="side">
+          <div class="panel orders-panel">
+            <h3>Müşteri Siparişleri <small class="muted" id="orderCount"></small></h3>
+            <ul class="order-list" id="orderList"></ul>
+          </div>
           <div class="panel goals-panel">
             <h3>Hedefler <small class="muted" id="goalCount"></small></h3>
             <ol class="goal-list" id="goalList"></ol>
@@ -97,6 +102,7 @@
           </div>
           <button class="btn btn-small btn-secondary" id="nextDayBtn2"><span data-icon="moon"></span>Günü Bitir</button>
         </div>
+        <div class="event-banner" id="eventBannerMarket" hidden></div>
         <div class="grid" id="offers"></div>
       </section>
 

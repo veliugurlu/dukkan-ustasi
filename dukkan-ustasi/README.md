@@ -1,4 +1,4 @@
-# Dükkan Ustası — HTML5 prototip (v0.2.0)
+# Dükkan Ustası — HTML5 prototip (v0.3.0)
 
 İkinci el eşya dükkânı oyunu: pazardan ucuza al, tamir et, kârla sat, dükkânını büyüt.
 Saf HTML5 + CSS + JavaScript. Oyunun kendisi **hiçbir kütüphane kullanmaz**.
@@ -19,8 +19,13 @@ Telefonda denemek için: Chrome > Geliştirici araçları (F12) > cihaz simgesi 
 | 10 eşya (5'i ilk seviyeden alınabilir) | `config.js` → `ITEMS` |
 | Satın alma, tamir, satış | `www/js/game.js` → `buy`, `repair`, `sell` |
 | Fiyat ve kâr formülleri | `www/js/economy.js` |
-| Hedef zinciri (16 hedef, ödüllü) + üstte sürekli hedef çubuğu | `config.js` → `GOALS`, `game.js` → `checkGoals` |
+| Hedef zinciri (20 hedef, ödüllü) + üstte sürekli hedef çubuğu | `config.js` → `GOALS`, `game.js` → `checkGoals` |
 | Gizli kusur, inceleme, günlük piyasa, kira/borç | `config.js`, `game.js` → `inspect`, `nextDay` |
+| Pazarlık (her teklifte bir kez, risk/ödül) | `config.js` → `haggle`, `game.js` → `haggle` |
+| Müşteri siparişleri (süreli, normalden fazla öder) | `config.js` → `orders`, `game.js` → `fulfillOrder` |
+| Günlük olaylar (6 olay) | `config.js` → `EVENTS`, `economy.js` → `event*` |
+| Usta Dokunuşu tamir mini oyunu | `ui.js` → `askRepair`, `game.js` → `repair(…, quality)` |
+| Gizlilik politikası (Play için) | `www/gizlilik.html` |
 | Dükkân seviyesi (XP) + 5 geliştirme | `config.js` → `UPGRADES`, `game.js` → `addXp`, `buyUpgrade` |
 | localStorage kaydı, bozuk kayıt koruması | `www/js/storage.js` |
 | Eşya çizimleri (satır içi SVG) | `www/js/art.js` |
@@ -39,7 +44,7 @@ günlük kira       = 30 + 20 × (seviye − 1); ödenemezse borç olur, sonraki
 ```
 
 - **Gizli kusur:** tekliflerin ~%30'unda. Satın alınca ortaya çıkar, tamiri %50–90 pahalılaştırır. *İncele* (fiyatın %12'si) ile önceden görülür.
-- **Hedefler:** 16 hedeflik zincir; her biri ne yapılacağını söyler, *Git ›* doğru sekmeyi açar, ödül verir.
+- **Hedefler:** 20 hedeflik zincir; her biri ne yapılacağını söyler, *Git ›* doğru sekmeyi açar, ödül verir.
 - **Denge:** `node tools/balance.js` iki botu 40 gün oynatır. Dikkatli oyuncu dikkatsizin ~2,5–3 katı kâr eder; dikkatsiz oyuncunun satışlarının ~%33'ü zararlıdır.
 
 Geliştirmeler: **Atölye** (tamir ucuzlar, tamir sonrası durum %80 → %100), **Vitrin** (+%5 satış/seviye),
@@ -54,7 +59,7 @@ dukkan-ustasi/
 │   ├── css/style.css
 │   ├── js/  config · economy · game · storage · art · audio · ui · main
 │   └── assets/icon.svg
-├── tests/economy.test.js     ← 17 birim testi (ek paket yok)
+├── tests/economy.test.js     ← 24 birim testi (ek paket yok)
 ├── tools/serve.js            ← bağımlılıksız yerel sunucu
 ├── tools/smoke.js            ← tarayıcı duman testi (Playwright, isteğe bağlı)
 ├── tools/balance.js          ← denge simülasyonu (bağımlılıksız)
@@ -62,6 +67,7 @@ dukkan-ustasi/
 ├── tools/make-android-res.js ← Android görsellerini icon.svg'den üretir
 ├── capacitor.config.json     ← Android paket ayarları (com.veli.dukkanustasi)
 ├── package.json / package-lock.json
+├── docs/PLAY_STORE.md        ← Play Console metinleri ve formlar
 └── docs/ANDROID_PLAN.md      ← AAB ve bulut derleme planı
 ```
 
