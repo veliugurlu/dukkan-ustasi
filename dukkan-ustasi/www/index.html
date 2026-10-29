@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#2b1d14">
+  <meta name="description" content="Dükkan Ustası: ikinci el eşya al, tamir et, kârla sat.">
+  <title>Dükkan Ustası</title>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app" class="app">
+    <header class="topbar">
+      <div class="brand">
+        <img src="assets/icon.svg" alt="" class="brand-logo">
+        <div class="brand-text">
+          <strong>Dükkan Ustası</strong>
+          <span id="dayLabel">Gün 1</span>
+        </div>
+      </div>
+      <div class="level-chip" id="levelChip" title="Dükkân seviyesi">
+        <span class="level-num" id="levelNum">1</span>
+        <div class="xp"><div class="xp-fill" id="xpFill"></div></div>
+      </div>
+      <div class="money" id="money" aria-live="polite">
+        <span class="coin" data-icon="coin"></span><span id="moneyValue">1.000</span>
+        <span class="debt" id="debtLabel" hidden></span>
+      </div>
+      <button class="icon-btn" id="settingsBtn" aria-label="Ayarlar" data-icon="gear"></button>
+      <div class="goalbar" id="goalBar"></div>
+    </header>
+
+    <nav class="tabs" id="tabs" role="tablist">
+      <button class="tab active" data-view="shop" role="tab"><span data-icon="shop"></span><b>Dükkân</b></button>
+      <button class="tab" data-view="market" role="tab"><span data-icon="market"></span><b>Pazar</b></button>
+      <button class="tab" data-view="storage" role="tab"><span data-icon="box"></span><b>Depo</b><i class="badge" id="storageBadge"></i></button>
+      <button class="tab" data-view="upgrades" role="tab"><span data-icon="up"></span><b>Geliştir</b></button>
+    </nav>
+
+    <main class="views">
+      <!-- DÜKKÂN -->
+      <section class="view active" id="view-shop">
+        <div class="scene" id="scene">
+          <div class="scene-wall"></div>
+          <div class="scene-window"><div class="sun"></div><div class="cloud c1"></div><div class="cloud c2"></div></div>
+          <div class="scene-sign" id="sceneSign"><span>DÜKKAN USTASI</span><small id="signStars">★</small></div>
+          <div class="scene-shelves" id="shelves"></div>
+          <div class="scene-counter">
+            <div class="register"><div class="register-screen" id="registerScreen">0</div></div>
+            <div class="deco plant" data-min="2"></div>
+            <div class="deco lamp" data-min="3"></div>
+          </div>
+          <div class="scene-rug" data-min="4"></div>
+          <div class="scene-cat" data-min="6" title="Dükkânın kedisi"></div>
+        </div>
+
+        <div class="stats" id="stats"></div>
+
+        <div class="actions-row">
+          <button class="btn btn-primary" id="goMarketBtn"><span data-icon="market"></span>Pazara Git</button>
+          <button class="btn btn-secondary" id="nextDayBtn"><span data-icon="moon"></span>Günü Bitir</button>
+        </div>
+
+        <div class="side">
+          <div class="panel goals-panel">
+            <h3>Hedefler <small class="muted" id="goalCount"></small></h3>
+            <ol class="goal-list" id="goalList"></ol>
+          </div>
+          <div class="panel">
+            <h3>Son İşlemler</h3>
+            <ul class="log" id="log"></ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- PAZAR -->
+      <section class="view" id="view-market">
+        <div class="view-head">
+          <div>
+            <h2>Pazar</h2>
+            <p class="muted">Her satıcı dürüst değil: fiyata ve gizli kusura dikkat et.</p>
+          </div>
+          <button class="btn btn-small btn-secondary" id="nextDayBtn2"><span data-icon="moon"></span>Günü Bitir</button>
+        </div>
+        <div class="grid" id="offers"></div>
+      </section>
+
+      <!-- DEPO -->
+      <section class="view" id="view-storage">
+        <div class="view-head">
+          <div>
+            <h2>Depo</h2>
+            <p class="muted" id="capacityText">0 / 4 eşya</p>
+          </div>
+        </div>
+        <div class="grid" id="inventory"></div>
+      </section>
+
+      <!-- GELİŞTİR -->
+      <section class="view" id="view-upgrades">
+        <div class="level-card" id="levelCard"></div>
+        <div class="grid grid-upg" id="upgrades"></div>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-root" id="modalRoot" hidden></div>
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+  <div class="fx-layer" id="fxLayer"></div>
+  <div class="day-fade" id="dayFade"></div>
+
+  <script src="js/config.js"></script>
+  <script src="js/economy.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/storage.js"></script>
+  <script src="js/art.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

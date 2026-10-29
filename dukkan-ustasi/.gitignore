@@ -1,0 +1,8 @@
+node_modules/
+# Android projesi şimdilik bulutta üretiliyor (bkz. docs/ANDROID_PLAN.md, Aşama B'de commit edilecek)
+android/
+*.keystore
+*.jks
+keystore.properties
+.DS_Store
+Thumbs.db

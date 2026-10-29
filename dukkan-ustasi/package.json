@@ -1,0 +1,25 @@
+{
+  "name": "dukkan-ustasi",
+  "version": "0.2.0",
+  "description": "Dükkan Ustası — ikinci el eşya al, tamir et, sat. HTML5 mobil oyun.",
+  "private": true,
+  "scripts": {
+    "start": "node tools/serve.js",
+    "balance": "node tools/balance.js",
+    "test": "node --test tests/*.test.js",
+    "smoke": "node tools/smoke.js",
+    "android:add": "cap add android",
+    "android:sync": "cap sync android"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.6.0",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/core": "8.6.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.0"
+  }
+}

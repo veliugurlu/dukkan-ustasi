@@ -1,0 +1,8 @@
+{
+  "appId": "com.veli.dukkanustasi",
+  "appName": "Dükkan Ustası",
+  "webDir": "www",
+  "android": {
+    "backgroundColor": "#2b1d14"
+  }
+}
