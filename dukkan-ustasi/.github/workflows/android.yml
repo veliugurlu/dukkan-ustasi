@@ -1,8 +1,3 @@
-# Dükkan Ustası — Android bulut derlemesi (GitHub Actions, ücretsiz)
-# Çalıştırma: GitHub > Actions > "Android Derleme" > Run workflow
-# Çıktılar (Artifacts): dukkan-ustasi-debug.apk (telefona kurulur) ve
-# dukkan-ustasi-release-unsigned.aab (imzasız; Play'e yüklemek için Aşama C'de imzalanacak).
-# Bu dosya hiçbir gizli anahtar istemez.
 name: Android Derleme
 
 on:
@@ -15,37 +10,58 @@ permissions:
 
 jobs:
   android:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Kodu al
         uses: actions/checkout@v4
 
+      - name: Proje klasörünü bul
+        run: |
+          CFG=$(find . -name capacitor.config.json -not -path "*/node_modules/*" | head -n 1)
+          if [ -z "$CFG" ]; then
+            echo "::error::capacitor.config.json bulunamadı. Proje dosyaları depoya yüklenmemiş."
+            ls -la
+            exit 1
+          fi
+          PROJ=$(dirname "$CFG")
+          echo "PROJ=$PROJ" >> "$GITHUB_ENV"
+          echo "Proje klasörü: $PROJ"
+          ls -la "$PROJ"
+
       - name: Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
       - name: Java 21 (Temurin)
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
-          cache: gradle
 
       - name: Bağımlılıkları kur
-        run: npm ci
+        working-directory: ${{ env.PROJ }}
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
 
       - name: Birim testleri
+        working-directory: ${{ env.PROJ }}
         run: npm test
 
       - name: Android projesini oluştur ve web dosyalarını kopyala
+        working-directory: ${{ env.PROJ }}
         run: |
           if [ ! -d android ]; then npx cap add android; fi
           npx cap sync android
 
+      - name: Uygulama simgesi ve açılış ekranı
+        working-directory: ${{ env.PROJ }}
+        run: |
+          if [ -d resources/android/res ]; then cp -r resources/android/res/. android/app/src/main/res/; else echo "Simge klasörü yok, varsayılan simge kullanılacak."; fi
+
       - name: Sürüm numarası ve dikey ekran ayarı
+        working-directory: ${{ env.PROJ }}
         run: |
           VERSION_NAME=$(node -p "require('./package.json').version")
           VERSION_CODE=${{ github.run_number }}
@@ -56,17 +72,18 @@ jobs:
           echo "Sürüm: $VERSION_NAME ($VERSION_CODE)"
 
       - name: APK (debug) ve AAB (release, imzasız) derle
-        working-directory: android
+        working-directory: ${{ env.PROJ }}/android
         run: |
           chmod +x gradlew
           ./gradlew --no-daemon assembleDebug bundleRelease
 
       - name: Çıktıları adlandır
+        working-directory: ${{ env.PROJ }}
         run: |
-          mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/dukkan-ustasi-debug.apk
-          cp android/app/build/outputs/bundle/release/app-release.aab dist/dukkan-ustasi-release-unsigned.aab
-          ls -la dist
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/dist/dukkan-ustasi-debug.apk"
+          cp android/app/build/outputs/bundle/release/app-release.aab "$GITHUB_WORKSPACE/dist/dukkan-ustasi-release-unsigned.aab"
+          ls -la "$GITHUB_WORKSPACE/dist"
 
       - name: Çıktıları yükle
         uses: actions/upload-artifact@v4
